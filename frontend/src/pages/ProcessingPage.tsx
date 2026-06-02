@@ -6,6 +6,7 @@ interface Props {
   requestId: string;
   onComplete: (result: TailorResponse) => void;
   onError: (message: string) => void;
+  onCancel?: () => void;
 }
 
 const STAGE_ESTIMATES: Record<number, string> = {
@@ -15,7 +16,7 @@ const STAGE_ESTIMATES: Record<number, string> = {
   4: "~10s",
 };
 
-export function ProcessingPage({ requestId, onComplete, onError }: Props) {
+export function ProcessingPage({ requestId, onComplete, onError, onCancel }: Props) {
   const [stage, setStage] = useState(1);
   const [stageMessage, setStageMessage] = useState("Starting up...");
   const [elapsed, setElapsed] = useState(0);
@@ -125,6 +126,31 @@ export function ProcessingPage({ requestId, onComplete, onError }: Props) {
         </div>
 
         <ProcessingStatus currentStage={stage} />
+
+        {onCancel && (
+          <div style={{ textAlign: "center", marginTop: "2rem" }}>
+            <button
+              type="button"
+              onClick={onCancel}
+              style={{
+                padding: "0.5rem 1.25rem",
+                borderRadius: 9999,
+                border: "1px solid rgba(255,255,255,0.1)",
+                background: "transparent",
+                color: "var(--text-secondary)",
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "'Space Grotesk', sans-serif",
+                transition: "border-color 0.2s, color 0.2s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.25)"; e.currentTarget.style.color = "var(--text-primary)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)"; e.currentTarget.style.color = "var(--text-secondary)"; }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

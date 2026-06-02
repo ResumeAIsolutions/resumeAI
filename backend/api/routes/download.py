@@ -140,7 +140,7 @@ async def download_docx(req: DownloadRequest):
     final_bullets = _resolve_bullets(resume_structured, req.accepted_bullets, rewrites)
 
     try:
-        docx_bytes = generate_docx(resume_structured, final_bullets)
+        docx_bytes = generate_docx(resume_structured, final_bullets, template_id=req.template_id or "jake")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"DOCX generation failed: {str(e)}")
 

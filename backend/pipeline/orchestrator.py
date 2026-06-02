@@ -210,6 +210,8 @@ async def run_pipeline_background(
     Runs the pipeline in a thread, pushes progress events, and stores the final
     result in both Redis and Supabase.
     """
+    logger.info("Pipeline background task STARTED for request %s (resume len=%d, jd len=%d)",
+                request_id, len(resume_text), len(jd_text))
     try:
         result = await asyncio.to_thread(
             _run_pipeline_sync, resume_text, jd_text, request_id, user_id, original_filename
@@ -222,4 +224,5 @@ async def run_pipeline_background(
                 logger.warning("Failed to increment usage for %s: %s", user_id, e)
         progress_store.push(request_id, {"type": "done", "result": result.model_dump()})
     except Exception as e:
+        logger.error("Pipeline failed for request %s: %s", request_id, e, exc_info=True)
         progress_store.push(request_id, {"type": "error", "message": str(e)})

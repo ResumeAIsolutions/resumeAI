@@ -28,7 +28,7 @@ router = APIRouter()
 
 MAX_FILE_SIZE = 5 * 1024 * 1024
 MIN_JD_WORDS = 50
-SSE_TIMEOUT_SECONDS = 300  # 5 minutes max for SSE stream
+SSE_TIMEOUT_SECONDS = 300  # 5 minutes max — typical run is 30-90s, this catches silent failures
 
 
 @router.post("/tailor/start")

@@ -523,7 +523,7 @@ export default function App() {
         );
 
       case "processing":
-        return requestId ? <ProcessingPage requestId={requestId} onComplete={handlePipelineDone} onError={handlePipelineError} /> : null;
+        return requestId ? <ProcessingPage requestId={requestId} onComplete={handlePipelineDone} onError={handlePipelineError} onCancel={handleStartOver} /> : null;
 
       case "review":
         return result

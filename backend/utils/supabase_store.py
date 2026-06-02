@@ -115,8 +115,10 @@ def save_session(
         "resume_structured": resume_structured,
         "rewrites": rewrites,
         "response": response,
-        "base_resume_id": base_resume_id,
     }
+    # Only include base_resume_id if provided (column may not exist in older schemas)
+    if base_resume_id:
+        payload["base_resume_id"] = base_resume_id
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     # Use upsert so re-runs or retries don't fail on duplicate session_id
     _req("POST", "tailor_sessions", body=body, params="on_conflict=session_id")

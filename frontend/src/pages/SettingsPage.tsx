@@ -1,8 +1,6 @@
-import { useEffect, useState } from "react";
-import { CreditCard, Moon, Palette, Sparkles, Sun, UserCircle2 } from "lucide-react";
+import { CreditCard, Sparkles, UserCircle2 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import type { Tier } from "../types";
-import { applyAccentSelection, applyThemeState, readThemeState } from "../lib/theme";
 
 interface Props {
   user: User;
@@ -11,41 +9,7 @@ interface Props {
   onUpgrade: () => void;
 }
 
-const ACCENTS = [
-  { id: "lime", label: "Lime", hex: "#CCFF00" },
-  { id: "blue", label: "Ocean", hex: "#0A84FF" },
-  { id: "emerald", label: "Emerald", hex: "#10B981" },
-  { id: "amber", label: "Amber", hex: "#F59E0B" },
-  { id: "coral", label: "Coral", hex: "#F97316" },
-  { id: "graphite", label: "Graphite", hex: "#8B8D98" },
-  { id: "indigo", label: "Indigo", hex: "#6366F1" },
-] as const;
-
-type ThemeMode = "dark" | "light";
-type AccentId = (typeof ACCENTS)[number]["id"];
-
 export function SettingsPage({ user, tier, onCancelSubscription, onUpgrade }: Props) {
-  const [theme, setTheme] = useState<ThemeMode>("dark");
-  const [accent, setAccent] = useState<AccentId>("lime");
-
-  useEffect(() => {
-    const { theme: storedTheme, accent: storedAccent } = readThemeState();
-    setTheme(storedTheme);
-    setAccent(storedAccent as AccentId);
-  }, []);
-
-  function applyTheme(nextTheme: ThemeMode) {
-    const { theme: appliedTheme, accent: appliedAccent } = applyThemeState(nextTheme, accent);
-    setTheme(appliedTheme);
-    setAccent(appliedAccent as AccentId);
-  }
-
-  function applyAccent(nextAccent: AccentId) {
-    const { theme: appliedTheme, accent: appliedAccent } = applyAccentSelection(theme, nextAccent);
-    setTheme(appliedTheme);
-    setAccent(appliedAccent as AccentId);
-  }
-
   return (
     <div
       style={{
@@ -193,139 +157,6 @@ export function SettingsPage({ user, tier, onCancelSubscription, onUpgrade }: Pr
           </div>
         </section>
 
-        <section
-          className="bento-card"
-          style={{
-            padding: "1.25rem",
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 380px)",
-            gap: "1rem",
-          }}
-        >
-          <div>
-            <div className="label" style={{ marginBottom: "0.35rem" }}>
-              Appearance
-            </div>
-            <h2 style={{ fontSize: 20, color: "var(--text-primary)", marginBottom: "1rem" }}>Theme and accent</h2>
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(160px, 220px))", gap: "0.85rem", marginBottom: "1rem" }}>
-              {[
-                { id: "dark" as const, label: "Dark", icon: <Moon size={18} /> },
-                { id: "light" as const, label: "Light", icon: <Sun size={18} /> },
-              ].map((option) => {
-                const active = theme === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => applyTheme(option.id)}
-                    className="bento-card"
-                    style={{
-                      padding: "1rem",
-                      textAlign: "left",
-                      cursor: "pointer",
-                      background: active ? "color-mix(in srgb, var(--accent-soft) 50%, var(--surface))" : "var(--elevated)",
-                      borderColor: active ? "var(--accent-border)" : "var(--border)",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "0.55rem", marginBottom: "0.45rem", color: active ? "var(--accent)" : "var(--text-secondary)" }}>
-                      {option.icon}
-                      <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>{option.label}</span>
-                    </div>
-                    <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                      {option.id === "dark" ? "High-contrast workspace for long review sessions." : "Bright canvas for clean export planning."}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.7rem" }}>
-                <Palette size={16} color="var(--accent)" />
-                <span className="label">Accent Color</span>
-              </div>
-              <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                {ACCENTS.map((item) => {
-                  const active = accent === item.id;
-                  const limeLockedToDark = theme === "light" && item.id === "lime";
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => applyAccent(item.id)}
-                      style={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: "50%",
-                        border: active ? "3px solid var(--surface)" : "2px solid transparent",
-                        outline: active ? `2px solid ${item.hex}` : "none",
-                        background: item.hex,
-                        cursor: "pointer",
-                        boxShadow: active ? `0 0 0 4px color-mix(in srgb, ${item.hex} 24%, transparent)` : "none",
-                        opacity: limeLockedToDark ? 0.7 : 1,
-                      }}
-                      title={limeLockedToDark ? `${item.label} switches back to dark mode` : item.label}
-                    />
-                  );
-                })}
-              </div>
-              <p style={{ marginTop: "0.7rem", fontSize: 12, color: "var(--text-tertiary)", lineHeight: 1.6 }}>
-                Lime is reserved for dark mode so contrast stays sharp. If you choose lime while using light mode, the workspace will switch back to dark automatically.
-              </p>
-            </div>
-          </div>
-
-          <div
-            className="bento-card"
-            style={{
-              padding: "1rem",
-              background: "var(--elevated)",
-            }}
-          >
-            <div className="label" style={{ marginBottom: "0.35rem" }}>
-              Live Preview
-            </div>
-            <div
-              style={{
-                borderRadius: 18,
-                padding: "1rem",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-              }}
-            >
-              <div
-                style={{
-                  height: 140,
-                  borderRadius: 16,
-                  padding: "1rem",
-                  background:
-                    "linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--surface)) 0%, var(--surface) 80%)",
-                  border: "1px solid var(--border)",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                }}
-              >
-                <div>
-                  <div className="label" style={{ color: "var(--accent)", marginBottom: "0.35rem" }}>
-                    ResumeAI
-                  </div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)", marginBottom: "0.3rem" }}>
-                    {theme === "dark" ? "Night mode workspace" : "Light mode workspace"}
-                  </div>
-                  <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-                    Accent: {ACCENTS.find((item) => item.id === accent)?.label}
-                  </p>
-                </div>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <span className="pill pill-accent">Primary</span>
-                  <span className="pill pill-ghost">Secondary</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
       </div>
     </div>
   );

@@ -195,7 +195,7 @@ def _get_entry_fields(entry: dict) -> dict:
 # Section renderers — match DOCX structure exactly
 # ---------------------------------------------------------------------------
 
-def _render_header(resume: dict) -> str:
+def _render_header(resume: dict, cfg: Optional[TemplateConfig] = None) -> str:
     name = _esc(resume.get("name", ""))
     title = _esc(resume.get("title", ""))
     contact = resume.get("contact", {})
@@ -206,20 +206,7 @@ def _render_header(resume: dict) -> str:
     github = contact.get("github", "")
     portfolio = contact.get("portfolio", "")
 
-    lines = [r"\begin{center}"]
-
-    # Name — large bold (matches DOCX 18pt bold)
-    lines.append(r"    {\Large \textbf{" + name + r"}} \\[2pt]")
-
-    # Title line (matches DOCX title_line)
-    if title:
-        lines.append(r"    " + title + r" \\[1pt]")
-
-    # Location (matches DOCX location line)
-    if location:
-        lines.append(r"    " + location + r" \\[1pt]")
-
-    # Contact: phone | email | linkedin (pipe-separated, matches DOCX)
+    # Build contact parts (shared across all styles)
     contact_parts = []
     if phone:
         contact_parts.append(phone)
@@ -246,9 +233,28 @@ def _render_header(resume: dict) -> str:
             r"\href{" + _esc_url(url) + r"}{\underline{" + _esc(display) + r"}}"
         )
 
+    # Modern green: left-aligned large name, contact on next line
+    if cfg and cfg.section_style == "modern_green":
+        lines = []
+        lines.append(r"{\nametext{" + name + r"}} \\[6pt]")
+        if title:
+            lines.append(r"{\small " + title + r"} \\[2pt]")
+        if location:
+            lines.append(r"{\small " + location + r"} \\[2pt]")
+        if contact_parts:
+            lines.append(r"{\small " + r" $|$ ".join(contact_parts) + r"}")
+        lines.append(r"\vspace{6pt}")
+        return "\n".join(lines)
+
+    # Default: centered header
+    lines = [r"\begin{center}"]
+    lines.append(r"    {\Large \textbf{" + name + r"}} \\[2pt]")
+    if title:
+        lines.append(r"    " + title + r" \\[1pt]")
+    if location:
+        lines.append(r"    " + location + r" \\[1pt]")
     if contact_parts:
         lines.append(r"    \small " + r" $|$ ".join(contact_parts) + r" \\")
-
     lines.append(r"\end{center}")
     return "\n".join(lines)
 
@@ -464,6 +470,14 @@ def _build_preamble(cfg: TemplateConfig) -> str:
             r"[{\color{accent}\titlerule[1.5pt]}]",
             r"\titlespacing{\section}{0pt}{10pt}{6pt}",
         ]
+    elif cfg.section_style == "modern_green":
+        # Microsoft-style: ALL CAPS bold section headers with thin accent rule below.
+        # Section titles are passed pre-uppercased from the renderers, so no \MakeUppercase needed.
+        lines += [
+            r"\titleformat{\section}{\bfseries\normalsize\color{accent}}{}{0em}{}"
+            r"[\vspace{-4pt}{\color{accent}\rule{\linewidth}{0.6pt}}]",
+            r"\titlespacing*{\section}{0pt}{10pt}{5pt}",
+        ]
     elif cfg.section_style == "scshape_rule":
         lines += [
             r"\titleformat{\section}{\scshape\raggedright\large}{}{0em}{}[\color{black}\titlerule]",
@@ -474,7 +488,12 @@ def _build_preamble(cfg: TemplateConfig) -> str:
         rf"\setlist[itemize]{{noitemsep,topsep=2pt,leftmargin=0.2in,label={cfg.bullet_char}}}"
     )
 
-    if cfg.accent_rgb:
+    if cfg.section_style == "modern_green":
+        lines += [
+            r"\newcommand{\nametext}[1]{{\fontsize{28}{34}\selectfont\bfseries #1}}",
+            r"\newcommand{\datetext}[1]{#1}",
+        ]
+    elif cfg.accent_rgb:
         lines += [
             r"\newcommand{\nametext}[1]{{\fontsize{20}{24}\selectfont\bfseries\color{accent}#1}}",
             r"\newcommand{\datetext}[1]{\textcolor{accent}{#1}}",
@@ -498,7 +517,7 @@ LATEX_POSTAMBLE = "\n\\end{document}\n"
 def build_latex(resume: dict, cfg: TemplateConfig) -> str:
     body_parts = []
 
-    body_parts.append(_render_header(resume))
+    body_parts.append(_render_header(resume, cfg))
 
     summary_tex = _render_summary(resume)
     if summary_tex:

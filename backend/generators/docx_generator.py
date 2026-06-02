@@ -42,14 +42,27 @@ def _get_entry_fields(entry: dict) -> dict:
     return {"company": company, "role": role, "location": location, "dates": dates}
 
 
+# Template style configs for DOCX — mirrors LaTeX TemplateConfig
+_DOCX_STYLES = {
+    "jake":    {"accent": "000000", "margins": (0.5, 0.5, 0.5, 0.5), "name_size": 18, "name_align": "center", "font": "Calibri"},
+    "modern":  {"accent": "4495A2", "margins": (0.6, 0.2, 1.0, 1.0), "name_size": 28, "name_align": "left",   "font": "Calibri"},
+    "soham":   {"accent": "000000", "margins": (0.5, 0.5, 0.7, 0.7), "name_size": 16, "name_align": "center", "font": "Calibri"},
+    "overleaf":{"accent": "000000", "margins": (0.5, 0.5, 0.75, 0.75), "name_size": 15, "name_align": "center", "font": "Calibri"},
+}
+
+_current_style = _DOCX_STYLES["jake"]
+
+
 def _add_section_header(doc: Document, title: str):
     """Add a bold, underlined section header matching the LaTeX titlerule style."""
+    accent = _current_style["accent"]
     p = doc.add_paragraph()
     p.paragraph_format.space_before = Pt(10)
     p.paragraph_format.space_after = Pt(4)
     run = p.add_run(title.upper())
     run.bold = True
     run.font.size = Pt(11)
+    run.font.color.rgb = RGBColor.from_string(accent)
     # Add bottom border to simulate \titlerule
     pPr = p._p.get_or_add_pPr()
     pBdr = OxmlElement("w:pBdr")
@@ -57,7 +70,7 @@ def _add_section_header(doc: Document, title: str):
     bottom.set(qn("w:val"), "single")
     bottom.set(qn("w:sz"), "6")
     bottom.set(qn("w:space"), "1")
-    bottom.set(qn("w:color"), "000000")
+    bottom.set(qn("w:color"), accent)
     pBdr.append(bottom)
     pPr.append(pBdr)
 
@@ -92,39 +105,46 @@ def _add_two_column_line(doc: Document, left: str, right: str, left_bold=False, 
     return p
 
 
-def generate_docx(resume_structured: dict, accepted_bullets: Dict[str, str]) -> bytes:
-    """Generate a DOCX matching the LaTeX template style."""
+def generate_docx(resume_structured: dict, accepted_bullets: Dict[str, str], template_id: str = "jake") -> bytes:
+    """Generate a DOCX matching the selected LaTeX template style."""
+    global _current_style
+    _current_style = _DOCX_STYLES.get(template_id, _DOCX_STYLES["jake"])
+    ts = _current_style
+
     resume = _apply_bullets(resume_structured, accepted_bullets)
     doc = Document()
 
-    # Page margins (matching 0.5in LaTeX margins)
+    # Page margins from template config
+    top, bot, left, right = ts["margins"]
     for section in doc.sections:
-        section.top_margin = Inches(0.5)
-        section.bottom_margin = Inches(0.5)
-        section.left_margin = Inches(0.5)
-        section.right_margin = Inches(0.5)
+        section.top_margin = Inches(top)
+        section.bottom_margin = Inches(bot)
+        section.left_margin = Inches(left)
+        section.right_margin = Inches(right)
 
     # Default paragraph spacing
     style = doc.styles["Normal"]
-    style.font.name = "Calibri"
+    style.font.name = ts["font"]
     style.font.size = Pt(10)
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.space_after = Pt(2)
+
+    align = WD_ALIGN_PARAGRAPH.LEFT if ts["name_align"] == "left" else WD_ALIGN_PARAGRAPH.CENTER
 
     # ---- Header ----
     name = resume.get("name", "")
     if name:
         p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.alignment = align
         p.paragraph_format.space_after = Pt(2)
         run = p.add_run(name)
         run.bold = True
-        run.font.size = Pt(18)
+        run.font.size = Pt(ts["name_size"])
 
     title_line = resume.get("title", "")
     if title_line:
         p = doc.add_paragraph(title_line)
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.alignment = align
         p.paragraph_format.space_after = Pt(1)
         for r in p.runs:
             r.font.size = Pt(10)
@@ -133,7 +153,7 @@ def generate_docx(resume_structured: dict, accepted_bullets: Dict[str, str]) -> 
     location = contact.get("location", "")
     if location:
         p = doc.add_paragraph(location)
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.alignment = align
         p.paragraph_format.space_after = Pt(4)
         for r in p.runs:
             r.font.size = Pt(10)
@@ -145,7 +165,7 @@ def generate_docx(resume_structured: dict, accepted_bullets: Dict[str, str]) -> 
     ] if v]
     if contact_parts:
         p = doc.add_paragraph("  |  ".join(contact_parts))
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.alignment = align
         p.paragraph_format.space_after = Pt(6)
         for r in p.runs:
             r.font.size = Pt(10)

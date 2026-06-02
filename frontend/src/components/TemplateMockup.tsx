@@ -3,7 +3,7 @@ import { TemplateId, Tier } from "../types";
 
 export const TEMPLATES = [
   { id: "jake",     label: "Jake's Classic", desc: "ATS-safe · Minimal · Clean",  pro: false },
-  { id: "modern",   label: "Modern",         desc: "Navy accents · Bold headers",  pro: true  },
+  { id: "modern",   label: "Modern",         desc: "Teal accents · Left-aligned · Professional",  pro: true  },
   { id: "soham",    label: "ATS Pro",        desc: "Small-caps · ATS optimized",   pro: true  },
   { id: "overleaf", label: "Clean",          desc: "Open bullets · Minimal",       pro: true  },
 ] as const;
@@ -18,27 +18,27 @@ export function TemplateMockup({ id }: MockupProps) {
   const isJake = id === "jake";
   const isOverleaf = id === "overleaf";
 
-  const accentColor = isModern ? "#141E61" : "#111";
+  const accentColor = isModern ? "#4495A2" : "#111";
   const sectionHeaderStyle: React.CSSProperties = {
-    fontSize: isModern ? 13 : isSoham ? 12 : 10,
+    fontSize: isModern ? 11 : isSoham ? 12 : 10,
     fontWeight: 700,
-    color: accentColor,
-    borderBottom: isModern ? "2px solid #141E61" : isSoham ? "0.6px solid #aaa" : "0.4px solid #111",
+    color: isModern ? "#4495A2" : "#111",
+    borderBottom: isModern ? "1px solid #4495A2" : isSoham ? "0.6px solid #aaa" : "0.4px solid #111",
     paddingBottom: 2,
     marginTop: 12,
     marginBottom: 4,
-    textTransform: isJake ? "uppercase" : "none",
+    textTransform: "uppercase",
     fontVariant: isSoham ? "small-caps" : "normal",
     fontFamily: "Arial, Helvetica, sans-serif",
   };
 
   const nameStyle: React.CSSProperties = {
-    fontSize: isModern ? 22 : isSoham ? 16 : 15,
+    fontSize: isModern ? 28 : isSoham ? 16 : 15,
     fontWeight: 700,
-    color: accentColor,
+    color: isModern ? "#111" : "#111",
     textAlign: isModern ? "left" : "center",
-    marginBottom: 2,
-    fontFamily: "Arial, Helvetica, sans-serif",
+    marginBottom: isModern ? 4 : 2,
+    fontFamily: isModern ? "Georgia, 'Times New Roman', serif" : "Arial, Helvetica, sans-serif",
   };
 
   const subHeaderStyle: React.CSSProperties = {
@@ -63,7 +63,7 @@ export function TemplateMockup({ id }: MockupProps) {
     justifyContent: "space-between",
     fontSize: 10,
     fontStyle: "italic",
-    color: isModern ? "#141E61" : "#333",
+    color: "#333",
     marginTop: 1,
     fontFamily: "Arial, Helvetica, sans-serif",
   };

@@ -299,7 +299,7 @@ export function CoverLetterPage({
         </button>
       </main>
 
-      {/* Right 40% — PDF preview */}
+      {/* Right 40% — PDF preview (only shown after content is generated) */}
       <aside style={{
         flex: "0 0 40%",
         maxWidth: "40%",
@@ -307,25 +307,31 @@ export function CoverLetterPage({
         padding: "1.5rem",
         borderLeft: "1px solid rgba(255,255,255,0.06)",
       }}>
-        <PreviewPanel
-          fetchPdf={async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            return downloadCoverLetterPdf(
-              resumeSummary,
+        {coverLetter ? (
+          <PreviewPanel
+            fetchPdf={async () => {
+              const { data: { session } } = await supabase.auth.getSession();
+              return downloadCoverLetterPdf(
+                resumeSummary,
+                coverLetter,
+                metadata.hiring_manager,
+                metadata.company_name,
+                metadata.job_title,
+                session?.access_token,
+              );
+            }}
+            refreshKey={JSON.stringify({
               coverLetter,
-              metadata.hiring_manager,
-              metadata.company_name,
-              metadata.job_title,
-              session?.access_token,
-            );
-          }}
-          refreshKey={JSON.stringify({
-            coverLetter,
-            hiringManager: metadata.hiring_manager,
-            companyName: metadata.company_name,
-            jobTitle: metadata.job_title,
-          })}
-        />
+              hiringManager: metadata.hiring_manager,
+              companyName: metadata.company_name,
+              jobTitle: metadata.job_title,
+            })}
+          />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100%", color: "var(--text-tertiary)" }}>
+            <p style={{ fontSize: 13 }}>PDF preview will appear once your cover letter is generated.</p>
+          </div>
+        )}
       </aside>
 
       </div>{/* end split */}
