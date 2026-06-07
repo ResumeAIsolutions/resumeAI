@@ -558,7 +558,7 @@ function Pricing({ onGetStarted, onStartPro }: { onGetStarted: () => void; onSta
     {
       name: "Pro",
       price: "$9",
-      period: "/ month",
+      period: "one-time",
       description: "For active job seekers.",
       features: ["Unlimited tailors", "PDF + DOCX download", "History & dashboard", "Cover letter generation", "Priority processing"],
       cta: "Start Pro →",

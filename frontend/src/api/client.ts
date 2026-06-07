@@ -185,28 +185,26 @@ export async function getUserSubscription(userId: string, accessToken?: string):
   return resp.json();
 }
 
-export async function createRazorpaySubscription(
-  userId: string,
+export async function createRazorpayOrder(
   currency: "INR" | "USD",
   accessToken: string,
-): Promise<{ subscription_id: string; key_id: string; currency: string }> {
-  const resp = await fetch(`${BASE}/razorpay/subscribe`, {
+): Promise<{ order_id: string; key_id: string; amount: number; currency: string }> {
+  const resp = await fetch(`${BASE}/razorpay/order`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${accessToken}` },
-    body: JSON.stringify({ user_id: userId, currency }),
+    body: JSON.stringify({ currency }),
   });
   if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: "Subscription creation failed" }));
-    throw new Error(typeof err.detail === "string" ? err.detail : "Subscription creation failed");
+    const err = await resp.json().catch(() => ({ detail: "Order creation failed" }));
+    throw new Error(typeof err.detail === "string" ? err.detail : "Order creation failed");
   }
   return resp.json();
 }
 
 export async function verifyRazorpayPayment(
   payload: {
-    user_id: string;
     razorpay_payment_id: string;
-    razorpay_subscription_id: string;
+    razorpay_order_id: string;
     razorpay_signature: string;
   },
   accessToken: string,
