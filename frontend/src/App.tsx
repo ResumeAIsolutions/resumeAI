@@ -1,7 +1,7 @@
 import { Component, useEffect, useRef, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
-import { startTailor, getUserSubscription, cancelRazorpaySubscription, getBaseResume, ApiError } from "./api/client";
+import { startTailor, getUserSubscription, getBaseResume, getAdminStatus, ApiError } from "./api/client";
 import type { BaseResumeInfo } from "./api/client";
 import { AppShell } from "./components/AppShell";
 import { AuthModal } from "./components/AuthModal";
@@ -69,10 +69,6 @@ class ReviewErrorBoundary extends Component<{ children: ReactNode }, { hasError:
   }
 }
 
-function isAdminUser(user: User | null) {
-  return Boolean(user?.user_metadata?.is_admin);
-}
-
 type WorkspaceNavId = "dashboard" | "resumes" | "templates" | "cover" | "review" | "settings" | "upgrade" | "admin";
 type TailorOnboardingStage = "resume" | "template" | null;
 
@@ -89,6 +85,8 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
+  const [adminReady, setAdminReady] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [pendingUpgrade, setPendingUpgrade] = useState(false);
   const [baseResume, setBaseResume] = useState<BaseResumeInfo | null>(null);
   const [baseResumeLoading, setBaseResumeLoading] = useState(false);
@@ -99,15 +97,22 @@ export default function App() {
     return (localStorage.getItem("resumeai_template") as TemplateId) || "jake";
   });
 
-  const isAdmin = isAdminUser(user);
+  const adminCheckVersion = useRef(0);
 
   useEffect(() => {
     localStorage.setItem("resumeai_template", templateId);
   }, [templateId]);
 
+  useEffect(() => {
+    const nextPath = step === "admin" || step === "admin-feedback" ? "/admin" : "/";
+    if (window.location.pathname !== nextPath) {
+      window.history.replaceState({}, "", nextPath);
+    }
+  }, [step]);
+
   // Handle admin pages: show auth if not logged in, redirect if not admin
   useEffect(() => {
-    if (!sessionReady) return;
+    if (!sessionReady || !adminReady) return;
     if (step !== "admin" && step !== "admin-feedback") return;
     if (!user) {
       setShowAuth(true);
@@ -116,7 +121,7 @@ export default function App() {
     if (!isAdmin) {
       setStep("dashboard");
     }
-  }, [step, sessionReady, user, isAdmin]);
+  }, [step, sessionReady, adminReady, user, isAdmin]);
 
   useEffect(() => {
     if (window.location.pathname === "/admin") {
@@ -129,7 +134,11 @@ export default function App() {
       if (currentUser) {
         void fetchTier(currentUser.id);
         void refreshBaseResume(currentUser);
+        void refreshAdminStatus(session?.access_token ?? undefined);
         setStep((prev) => (prev === "admin" ? "admin" : "dashboard"));
+      } else {
+        setIsAdmin(false);
+        setAdminReady(true);
       }
       setSessionReady(true);
     });
@@ -140,8 +149,11 @@ export default function App() {
       if (currentUser) {
         void fetchTier(currentUser.id);
         void refreshBaseResume(currentUser);
+        void refreshAdminStatus(session?.access_token ?? undefined);
       } else {
         setTier("free");
+        setIsAdmin(false);
+        setAdminReady(true);
         setBaseResume(null);
         setTailorOnboardingActive(false);
       }
@@ -157,6 +169,38 @@ export default function App() {
       setTier(info.tier);
     } catch {
       setTier("free");
+    }
+  }
+
+  async function refreshAdminStatus(accessToken?: string) {
+    const checkId = adminCheckVersion.current + 1;
+    adminCheckVersion.current = checkId;
+
+    if (!accessToken) {
+      if (adminCheckVersion.current === checkId) {
+        setIsAdmin(false);
+        setAdminReady(true);
+      }
+      return false;
+    }
+
+    setAdminReady(false);
+    try {
+      const status = await getAdminStatus(accessToken);
+      const allowed = Boolean(status.is_admin);
+      if (adminCheckVersion.current === checkId) {
+        setIsAdmin(allowed);
+      }
+      return allowed;
+    } catch {
+      if (adminCheckVersion.current === checkId) {
+        setIsAdmin(false);
+      }
+      return false;
+    } finally {
+      if (adminCheckVersion.current === checkId) {
+        setAdminReady(true);
+      }
     }
   }
 
@@ -188,20 +232,6 @@ export default function App() {
 
   function showUpgrade(reason: UpgradeReason) {
     setUpgradeReason(reason);
-  }
-
-  async function handleCancelSubscription() {
-    if (!window.confirm("Cancel your Pro subscription? You'll keep access until the current billing period ends.")) {
-      return;
-    }
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      await cancelRazorpaySubscription(session?.access_token ?? "");
-      setTier("free");
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Cancellation failed. Please try again.");
-    }
   }
 
   function handleGetStarted() {
@@ -239,6 +269,8 @@ export default function App() {
     }
     setUser(null);
     setTier("free");
+    setIsAdmin(false);
+    setAdminReady(true);
     setBaseResume(null);
     setTailorOnboardingStage(null);
     setTailorTemplateConfirmed(false);
@@ -483,6 +515,7 @@ export default function App() {
             error={error}
             onClearError={() => setError(null)}
             user={user}
+            isAdmin={isAdmin}
             tier={tier}
             templateId={templateId}
             onTemplateChange={handleTemplateChange}
@@ -491,6 +524,7 @@ export default function App() {
               void handleSignOut();
             }}
             onNewResume={() => { void handleStartTailoringFlow(); }}
+            onAdminPanel={() => setStep("admin")}
             onLogoClick={handleLogoClick}
             onUpgrade={() => showUpgrade("tailor_limit")}
           />
@@ -542,7 +576,6 @@ export default function App() {
                       }
                       setStep("cover-letter");
                     }}
-                    user={user}
                     tier={tier}
                     templateId={templateId}
                     onDashboard={() => setStep("dashboard")}
@@ -551,7 +584,6 @@ export default function App() {
                     }}
                     onLogoClick={handleLogoClick}
                     onUpgrade={showUpgrade}
-                    onCancelSubscription={handleCancelSubscription}
                   />
                 </ReviewErrorBoundary>,
               )
@@ -567,7 +599,6 @@ export default function App() {
                     }
                     setStep("cover-letter");
                   }}
-                  user={null}
                   tier={tier}
                   templateId={templateId}
                   onDashboard={() => setStep("dashboard")}
@@ -576,7 +607,6 @@ export default function App() {
                   }}
                   onLogoClick={handleLogoClick}
                   onUpgrade={showUpgrade}
-                  onCancelSubscription={handleCancelSubscription}
                 />
               </ReviewErrorBoundary>
             )
@@ -589,11 +619,13 @@ export default function App() {
             jdAnalysis={result.jd_analysis}
             onDone={() => setStep(user ? "dashboard" : "review")}
             user={user}
+            isAdmin={isAdmin}
             onDashboard={() => setStep("dashboard")}
             onSignOut={() => {
               void handleSignOut();
             }}
             onNewResume={() => { void handleStartTailoringFlow(); }}
+            onAdminPanel={() => setStep("admin")}
             onLogoClick={handleLogoClick}
           />
         ) : null;
@@ -603,7 +635,6 @@ export default function App() {
           "resumes",
           "Resume Library",
           <ResumesPage
-            user={user!}
             tier={tier}
             onNewResume={() => { void handleStartTailoringFlow(); }}
             onReopen={handleReopen}
@@ -666,7 +697,6 @@ export default function App() {
           <SettingsPage
             user={user!}
             tier={tier}
-            onCancelSubscription={handleCancelSubscription}
             onUpgrade={() => showUpgrade("tailor_limit")}
           />,
         );
@@ -685,13 +715,13 @@ export default function App() {
         );
 
       case "admin":
-        if (!sessionReady) return null;
+        if (!sessionReady || !adminReady) return null;
         if (!user) return null; // useEffect below handles showing auth
         if (!isAdmin) return null; // useEffect below redirects
         return <AdminPage user={user} onLogoClick={handleLogoClick} onBack={() => setStep("dashboard")} />;
 
       case "admin-feedback":
-        if (!sessionReady) return null;
+        if (!sessionReady || !adminReady) return null;
         if (!user) return null;
         if (!isAdmin) return null;
         return <AdminFeedbackPage onBack={() => setStep("dashboard")} />;

@@ -33,15 +33,15 @@ const REASON_COPY: Record<Props["reason"], { title: string; subtitle: string }> 
     subtitle: "Upgrade to Pro to generate AI-powered cover letters.",
   },
   history: {
-    title: "Resume history is a Pro feature",
-    subtitle: "Upgrade to Pro to save and revisit all your tailored resumes.",
+    title: "Pro unlocks advanced resume workflows",
+    subtitle: "Upgrade to Pro for premium templates, DOCX export, and AI cover letters.",
   },
 };
 
 const PRO_FEATURES = [
   "Unlimited tailors (lifetime access)",
   "PDF + DOCX download",
-  "Resume history & dashboard",
+  "Premium resume templates",
   "AI cover letter generation",
   "Priority processing",
 ];
@@ -247,7 +247,7 @@ export function UpgradeModal({ reason, user, onClose, onSignIn, onUpgradeSuccess
             </button>
 
             <p style={{ marginTop: "0.875rem", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
-              Cancel anytime. No hidden fees.
+              One-time payment. No renewal required.
             </p>
           </>
         )}

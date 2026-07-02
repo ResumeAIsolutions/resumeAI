@@ -15,15 +15,23 @@ from fastapi import Header, HTTPException
 _URL = (os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL", "")).rstrip("/")
 _ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")
 _SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+DEFAULT_ADMIN_EMAIL = "edlahareen@gmail.com"
 
 
 @dataclass
 class VerifiedUser:
     user_id: str
+    email: str
     is_admin: bool
 
 
-def verify_token(authorization: str) -> str:
+def _has_admin_access(user: dict) -> bool:
+    email = (user.get("email") or "").strip().lower()
+    metadata = user.get("user_metadata") or {}
+    return bool(metadata.get("is_admin")) or (bool(DEFAULT_ADMIN_EMAIL) and email == DEFAULT_ADMIN_EMAIL.lower())
+
+
+def verify_token(authorization: Optional[str]) -> str:
     """
     Validate a Supabase Bearer JWT.
     Returns the verified user_id (UUID string).
@@ -33,14 +41,14 @@ def verify_token(authorization: str) -> str:
     return verify_token_full(authorization).user_id
 
 
-def verify_token_full(authorization: str) -> VerifiedUser:
+def verify_token_full(authorization: Optional[str]) -> VerifiedUser:
     """
     Validate a Supabase Bearer JWT.
     Returns VerifiedUser with user_id and is_admin.
     Raises HTTPException 401 on invalid/expired token.
     Raises HTTPException 503 if Supabase is not configured or unreachable.
     """
-    if not authorization.startswith("Bearer "):
+    if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or malformed Authorization header.")
     token = authorization[7:]
 
@@ -62,7 +70,14 @@ def verify_token_full(authorization: str) -> VerifiedUser:
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token: no user ID.")
 
-    metadata = user.get("user_metadata") or {}
-    is_admin = bool(metadata.get("is_admin"))
+    email = user.get("email") or ""
+    is_admin = _has_admin_access(user)
 
-    return VerifiedUser(user_id=user_id, is_admin=is_admin)
+    return VerifiedUser(user_id=user_id, email=email, is_admin=is_admin)
+
+
+def verify_admin_token(authorization: Optional[str]) -> VerifiedUser:
+    verified = verify_token_full(authorization)
+    if not verified.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    return verified

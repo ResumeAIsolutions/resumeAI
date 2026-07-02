@@ -8,7 +8,6 @@ import {
   RefreshCw,
   Upload,
 } from "lucide-react";
-import type { User } from "@supabase/supabase-js";
 import { downloadFile, getBaseResume, uploadBaseResume } from "../api/client";
 import type { BaseResumeInfo } from "../api/client";
 import { loadHistory } from "../lib/history";
@@ -16,7 +15,6 @@ import { supabase } from "../lib/supabase";
 import type { HistoryEntry, TailorResponse, Tier, UpgradeReason } from "../types";
 
 interface Props {
-  user: User;
   tier: Tier;
   onNewResume: () => void;
   onReopen: (result: TailorResponse) => void;
@@ -60,7 +58,6 @@ function formatDate(iso: string) {
 }
 
 export function ResumesPage({
-  user,
   tier,
   onNewResume,
   onReopen,
@@ -156,7 +153,6 @@ export function ResumesPage({
           session_id: response.session_id,
           accepted_bullets: buildAcceptedBullets(response),
         },
-        user.id,
       );
       triggerDownload(blob, buildFilename(response, format));
     } catch (err) {

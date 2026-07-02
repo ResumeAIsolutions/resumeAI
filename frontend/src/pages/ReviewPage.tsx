@@ -7,7 +7,6 @@ import { PreviewPanel } from "../components/PreviewPanel";
 import { FileDown, MailPlus, CheckCheck, XCircle } from "lucide-react";
 import type { TailorResponse, BulletState, DownloadRequest, Tier, UpgradeReason, TemplateId } from "../types";
 import { downloadFile } from "../api/client";
-import type { User } from "@supabase/supabase-js";
 
 const SECTIONS = ["All", "Experience", "Projects", "Summary", "Skills", "Education"] as const;
 type Section = typeof SECTIONS[number];
@@ -16,13 +15,11 @@ interface Props {
   result: TailorResponse;
   onDone: () => void;
   onCoverLetter: () => void;
-  user: User | null;
   tier: Tier;
   onDashboard: () => void;
   onSignOut: () => void;
   onLogoClick: () => void;
   onUpgrade: (reason: UpgradeReason) => void;
-  onCancelSubscription?: () => void;
   templateId: TemplateId;
 }
 
@@ -36,7 +33,7 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 export function ReviewPage({
-  result, onDone, onCoverLetter, user, tier,
+  result, onDone, onCoverLetter, tier,
   onUpgrade, templateId,
 }: Props) {
   const [bulletStates, setBulletStates] = useState<Record<string, BulletState>>(() => {
@@ -91,7 +88,7 @@ export function ReviewPage({
     setDownloadError(null);
     try {
       const req = buildDownloadRequest();
-      const blob = await downloadFile(format, req, user?.id);
+      const blob = await downloadFile(format, req);
       const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
       const jobTitle = slug(`${result.jd_analysis.role_level} ${result.jd_analysis.industry}`);
       const userName = slug(result.resume_summary.name);
@@ -158,7 +155,7 @@ export function ReviewPage({
         </div>
         <div style={{ flex: 1, overflow: "auto", padding: "1rem" }}>
           <PreviewPanel
-            fetchPdf={() => downloadFile("pdf", previewRequest, user?.id)}
+            fetchPdf={() => downloadFile("pdf", previewRequest)}
             refreshKey={previewRefreshKey}
           />
         </div>

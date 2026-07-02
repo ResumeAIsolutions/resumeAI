@@ -1,4 +1,5 @@
 import type { DownloadRequest, ResumeSummary, JDAnalysis } from "../types";
+import { supabase } from "../lib/supabase";
 
 const BASE = "/api";
 
@@ -69,12 +70,15 @@ export async function startTailor(
 export async function downloadFile(
   format: "pdf" | "docx",
   req: DownloadRequest,
-  userId?: string,
 ): Promise<Blob> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (session?.access_token) headers["Authorization"] = `Bearer ${session.access_token}`;
+
   const resp = await fetch(`${BASE}/download/${format}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...req, user_id: userId }),
+    headers,
+    body: JSON.stringify(req),
   });
 
   if (!resp.ok) {
@@ -82,6 +86,15 @@ export async function downloadFile(
     throw new Error(typeof err.detail === "string" ? err.detail : "Download failed");
   }
 
+  return resp.blob();
+}
+
+export async function getTemplatePreview(templateId: "jake" | "modern" | "soham" | "overleaf"): Promise<Blob> {
+  const resp = await fetch(`${BASE}/download/template-preview/${templateId}`);
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({ detail: "Template preview failed" }));
+    throw new Error(typeof err.detail === "string" ? err.detail : "Template preview failed");
+  }
   return resp.blob();
 }
 
@@ -185,6 +198,16 @@ export async function getUserSubscription(userId: string, accessToken?: string):
   return resp.json();
 }
 
+export async function getAdminStatus(accessToken: string): Promise<{ is_admin: boolean; admin_id?: string }> {
+  const resp = await fetch(`${BASE}/admin/me`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!resp.ok) {
+    return { is_admin: false };
+  }
+  return resp.json();
+}
+
 export async function createRazorpayOrder(
   currency: "INR" | "USD",
   accessToken: string,
@@ -220,17 +243,6 @@ export async function verifyRazorpayPayment(
   }
 }
 
-export async function cancelRazorpaySubscription(accessToken: string): Promise<void> {
-  const resp = await fetch(`${BASE}/razorpay/cancel`, {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${accessToken}` },
-  });
-  if (!resp.ok) {
-    const err = await resp.json().catch(() => ({ detail: "Cancellation failed" }));
-    throw new Error(typeof err.detail === "string" ? err.detail : "Cancellation failed");
-  }
-}
-
 export interface BaseResumeInfo {
   found: boolean;
   id?: string;
@@ -259,4 +271,3 @@ export async function uploadBaseResume(file: File, accessToken: string): Promise
     throw new Error(typeof err.detail === "string" ? err.detail : "Upload failed");
   }
 }
-

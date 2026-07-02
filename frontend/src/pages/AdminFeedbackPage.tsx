@@ -64,9 +64,6 @@ function DetailModal({ feedback, onClose, onStatusChange }: {
       setUpdating(false);
     }
   }
-
-  const accent = TYPE_COLORS[feedback.type] ?? "#888";
-
   return (
     <div
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}

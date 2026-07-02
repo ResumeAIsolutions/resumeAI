@@ -1,5 +1,4 @@
 import React, { useState, useRef } from "react";
-import type { CSSProperties } from "react";
 
 const BASE = "/api";
 

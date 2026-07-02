@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from io import BytesIO
 
@@ -14,8 +14,91 @@ from generators.pdf_generator import generate_pdf
 from generators.docx_generator import generate_docx
 import utils.supabase_store as supabase_store
 import utils.subscription_store as sub_store
+import utils.auth as auth_utils
 
 router = APIRouter()
+
+
+def _build_template_preview_resume() -> dict:
+    """Representative resume used for public template previews."""
+    return {
+        "name": "Dashiell Hammett",
+        "title": "Senior Software Engineer",
+        "summary": (
+            "Results-driven software engineer with 8+ years of experience building scalable data systems "
+            "and full-stack applications. Proven track record leading cross-functional teams, "
+            "optimizing CI/CD pipelines, and shipping production ML systems."
+        ),
+        "contact": {
+            "email": "dashiell@example.com",
+            "phone": "(555) 010-0199",
+            "location": "San Francisco, CA",
+            "linkedin": "linkedin.com/in/dashiell",
+        },
+        "sections": [
+            {
+                "type": "experience",
+                "title": "Work Experience",
+                "entries": [
+                    {
+                        "company": "Continental Detective Agency",
+                        "role": "Senior Software Engineer",
+                        "location": "San Francisco, CA",
+                        "dates": "Aug. 2021 – Present",
+                        "bullets": [
+                            {"bullet_id": "exp-1", "text": "Architected a distributed event-processing pipeline handling 2M+ daily transactions with sub-200ms latency using Kafka and Redis."},
+                            {"bullet_id": "exp-2", "text": "Led migration of a monolithic REST API to microservices, cutting deployment time by 65% and improving fault isolation."},
+                            {"bullet_id": "exp-3", "text": "Designed a real-time analytics dashboard for 500+ internal users, reducing manual reporting effort by 40%."},
+                        ],
+                    },
+                    {
+                        "company": "Gutting & Associates",
+                        "role": "Software Engineer",
+                        "location": "New York, NY",
+                        "dates": "May 2018 – Jul. 2021",
+                        "bullets": [
+                            {"bullet_id": "exp-4", "text": "Built a React and FastAPI customer portal that onboarded 12,000+ users in the first quarter after launch."},
+                            {"bullet_id": "exp-5", "text": "Optimized PostgreSQL performance across 15 critical endpoints, reducing p95 latency from 1.2s to 180ms."},
+                        ],
+                    },
+                ],
+            },
+            {
+                "type": "projects",
+                "title": "Projects",
+                "entries": [
+                    {
+                        "company": "CloudDeploy CLI",
+                        "role": "Go, Terraform, AWS",
+                        "dates": "Sep. 2022",
+                        "bullets": [
+                            {"bullet_id": "proj-1", "text": "Created an open-source CLI for one-command cloud deployments, reaching 1.2K GitHub stars in three months."},
+                            {"bullet_id": "proj-2", "text": "Integrated Terraform plan previews and cost estimation to help teams reduce infrastructure spend by 25%."},
+                        ],
+                    }
+                ],
+            },
+            {
+                "type": "skills",
+                "title": "Technical Skills",
+                "entries": [
+                    {"bullets": [{"bullet_id": "skill-1", "text": "Python, TypeScript, SQL, React, FastAPI, Docker, AWS, PostgreSQL, Redis, Kafka"}]}
+                ],
+            },
+            {
+                "type": "education",
+                "title": "Education",
+                "entries": [
+                    {
+                        "company": "Stanford University",
+                        "role": "B.S. in Computer Science",
+                        "dates": "June 2018",
+                        "bullets": [{"bullet_id": "edu-1", "text": "GPA: 3.9/4.0"}],
+                    }
+                ],
+            },
+        ],
+    }
 
 
 def _get_session_data(session_id: str, requesting_user_id: str | None = None) -> dict:
@@ -47,6 +130,14 @@ def _get_session_data(session_id: str, requesting_user_id: str | None = None) ->
     return data
 
 
+def _verify_request_user(authorization: Optional[str]) -> tuple[Optional[str], bool]:
+    """Return the authenticated user_id and admin flag if a valid JWT is provided."""
+    if not authorization:
+        return None, False
+    verified = auth_utils.verify_token_full(authorization)
+    return verified.user_id, verified.is_admin
+
+
 def _resolve_bullets(resume_structured: dict, accepted_bullets: dict, rewrites: dict) -> dict:
     """
     Build final bullet map: bullet_id -> final text.
@@ -65,29 +156,49 @@ def _resolve_bullets(resume_structured: dict, accepted_bullets: dict, rewrites: 
     return final
 
 
+@router.get("/download/template-preview/{template_id}")
+async def download_template_preview(template_id: str):
+    if template_id not in {"jake", "modern", "soham", "overleaf"}:
+        raise HTTPException(status_code=404, detail="Template not found.")
+
+    resume_structured = _build_template_preview_resume()
+    try:
+        pdf_bytes = generate_pdf_latex(resume_structured, {}, template_id=template_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Template preview failed: {str(e)}")
+
+    return StreamingResponse(
+        BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{template_id}_template_preview.pdf"'},
+    )
+
+
 @router.post("/download/pdf")
-async def download_pdf(req: DownloadRequest):
+async def download_pdf(req: DownloadRequest, authorization: Optional[str] = Header(None)):
+    requesting_user_id, is_admin = _verify_request_user(authorization)
+
     # Resolved template with safe fallback
     template_id = req.template_id or "jake"
-    
+
     # Gate: non-default templates require Pro
     if template_id != "jake":
-        if not req.user_id:
+        if not requesting_user_id:
             raise HTTPException(
                 status_code=403,
                 detail={"code": "upgrade_required", "message": "Premium templates require a Pro account. Please sign in or upgrade."},
             )
         try:
-            tier = sub_store.get_tier(req.user_id)
+            tier = sub_store.get_tier(requesting_user_id, is_admin=is_admin)
         except Exception:
-            tier = "free"
+            raise HTTPException(status_code=503, detail="We could not verify your Pro access right now. Please try again.")
         if tier != "pro":
             raise HTTPException(
                 status_code=403,
                 detail={"code": "upgrade_required", "message": "This is a Pro template. Upgrade to unlock all layouts."},
             )
 
-    session = _get_session_data(req.session_id, req.user_id)
+    session = _get_session_data(req.session_id, requesting_user_id)
     resume_structured = session["resume_structured"]
     rewrites = session.get("rewrites", {})
 
@@ -117,23 +228,26 @@ async def download_pdf(req: DownloadRequest):
 
 
 @router.post("/download/docx")
-async def download_docx(req: DownloadRequest):
-    if req.user_id:
-        try:
-            tier = sub_store.get_tier(req.user_id)
-        except Exception:
-            tier = "free"
-        if tier != "pro":
-            raise HTTPException(
-                status_code=403,
-                detail={"code": "upgrade_required", "message": "DOCX download is a Pro feature. Upgrade to access it."},
-            )
-    else:
+async def download_docx(req: DownloadRequest, authorization: Optional[str] = Header(None)):
+    requesting_user_id, is_admin = _verify_request_user(authorization)
+
+    if not requesting_user_id:
         raise HTTPException(
             status_code=403,
             detail={"code": "upgrade_required", "message": "DOCX download requires a Pro account."},
         )
-    session = _get_session_data(req.session_id, req.user_id)
+
+    try:
+        tier = sub_store.get_tier(requesting_user_id, is_admin=is_admin)
+    except Exception:
+        raise HTTPException(status_code=503, detail="We could not verify your Pro access right now. Please try again.")
+    if tier != "pro":
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "upgrade_required", "message": "DOCX download is a Pro feature. Upgrade to access it."},
+        )
+
+    session = _get_session_data(req.session_id, requesting_user_id)
     resume_structured = session["resume_structured"]
     rewrites = session.get("rewrites", {})
 

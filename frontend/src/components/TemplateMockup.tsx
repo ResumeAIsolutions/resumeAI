@@ -1,5 +1,7 @@
 import React from "react";
 import { TemplateId, Tier } from "../types";
+import { PreviewPanel } from "./PreviewPanel";
+import { getTemplatePreview } from "../api/client";
 
 export const TEMPLATES = [
   { id: "jake",     label: "Jake's Classic", desc: "ATS-safe · Minimal · Clean",  pro: false },
@@ -15,10 +17,8 @@ interface MockupProps {
 export function TemplateMockup({ id }: MockupProps) {
   const isModern = id === "modern";
   const isSoham = id === "soham" || id === "overleaf";
-  const isJake = id === "jake";
   const isOverleaf = id === "overleaf";
 
-  const accentColor = isModern ? "#4495A2" : "#111";
   const sectionHeaderStyle: React.CSSProperties = {
     fontSize: isModern ? 11 : isSoham ? 12 : 10,
     fontWeight: 700,
@@ -295,9 +295,24 @@ export function TemplatePreviewModal({ template, tier, onSelect, onUpgrade, onCl
           <button onClick={onClose} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 24, padding: 0 }}>✕</button>
         </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: "1.5rem", display: "flex", justifyContent: "center", background: "#1a1a1a" }}>
-          <div style={{ boxShadow: "0 20px 50px rgba(0,0,0,0.5)", borderRadius: 4, flexShrink: 0 }}>
-            <TemplateMockup id={template.id} />
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: "1.5rem", background: "#1a1a1a" }}>
+          <div
+            style={{
+              height: "min(72vh, 920px)",
+              minHeight: 420,
+              maxWidth: 540,
+              margin: "0 auto",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
+              borderRadius: 8,
+              padding: "0.75rem",
+              background: "#111",
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            <PreviewPanel
+              fetchPdf={() => getTemplatePreview(template.id)}
+              refreshKey={template.id}
+            />
           </div>
         </div>
 

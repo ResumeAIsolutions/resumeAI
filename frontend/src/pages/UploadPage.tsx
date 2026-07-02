@@ -23,13 +23,15 @@ interface Props {
   templateId: TemplateId;
   onTemplateChange: (id: TemplateId) => void;
   onUpgrade: () => void;
+  isAdmin?: boolean;
+  onAdminPanel?: () => void;
 }
 
 const MIN_JD_WORDS = 50;
 
 export function UploadPage({ 
   onSubmit, loading, error, onClearError, user, onDashboard, onSignOut, onNewResume, onLogoClick,
-  tier, templateId, onTemplateChange, onUpgrade 
+  tier, templateId, onTemplateChange, onUpgrade, isAdmin = false, onAdminPanel
 }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [jd, setJd] = useState("");
@@ -101,7 +103,7 @@ export function UploadPage({
           Resume<span style={{ color: "var(--lime)" }}>AI</span>
         </button>
         {user ? (
-          <UserNav user={user} onDashboard={onDashboard} onSignOut={onSignOut} onNewResume={onNewResume} />
+          <UserNav user={user} isAdmin={isAdmin} onDashboard={onDashboard} onSignOut={onSignOut} onNewResume={onNewResume} onAdminPanel={onAdminPanel} />
         ) : (
           <span className="mono" style={{ color: "var(--text-tertiary)" }}>step 1 of 3</span>
         )}

@@ -17,6 +17,8 @@ interface CoverLetterPageProps {
   onSignOut: () => void;
   onNewResume: () => void;
   onLogoClick: () => void;
+  isAdmin?: boolean;
+  onAdminPanel?: () => void;
 }
 
 export function CoverLetterPage({
@@ -28,6 +30,8 @@ export function CoverLetterPage({
   onSignOut,
   onNewResume,
   onLogoClick,
+  isAdmin = false,
+  onAdminPanel,
 }: CoverLetterPageProps) {
   const [coverLetter, setCoverLetter] = useState("");
   const [metadata, setMetadata] = useState({ hiring_manager: "Hiring Manager", company_name: "", job_title: "" });
@@ -131,7 +135,7 @@ export function CoverLetterPage({
           Resume<span style={{ color: "var(--lime)" }}>AI</span>
         </button>
         {user ? (
-          <UserNav user={user} onDashboard={onDashboard} onSignOut={onSignOut} onNewResume={onNewResume} />
+          <UserNav user={user} isAdmin={isAdmin} onDashboard={onDashboard} onSignOut={onSignOut} onNewResume={onNewResume} onAdminPanel={onAdminPanel} />
         ) : (
           <span className="mono" style={{ color: "var(--text-tertiary)" }}>optional — cover letter</span>
         )}
