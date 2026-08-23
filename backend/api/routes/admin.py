@@ -143,8 +143,6 @@ def set_tier(user_id: str, body: SetTierRequest, admin_id: str = Depends(_verify
 
 # ─── Grant / Revoke Admin ───────────────────────────────────────────────────────
 
-DEFAULT_ADMIN_EMAIL = "edlahareen@gmail.com"
-
 
 class EmailRequest(BaseModel):
     email: str
@@ -190,8 +188,6 @@ def grant_admin(body: EmailRequest, admin_id: str = Depends(_verify_admin)):
 @router.post("/revoke-admin")
 def revoke_admin(body: EmailRequest, admin_id: str = Depends(_verify_admin)):
     """Revoke admin access from a user by email."""
-    if body.email == DEFAULT_ADMIN_EMAIL:
-        raise HTTPException(status_code=403, detail="Cannot revoke the default admin.")
     success = _set_user_admin_metadata(body.email, False)
     if not success:
         raise HTTPException(status_code=404, detail=f"User {body.email!r} not found.")

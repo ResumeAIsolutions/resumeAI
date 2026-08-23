@@ -1,4 +1,4 @@
-import type { DownloadRequest, ResumeSummary, JDAnalysis } from "../types";
+import type { DownloadRequest, ResumeSummary, JDAnalysis, TemplateId } from "../types";
 import { supabase } from "../lib/supabase";
 
 const BASE = "/api";
@@ -89,7 +89,7 @@ export async function downloadFile(
   return resp.blob();
 }
 
-export async function getTemplatePreview(templateId: "jake" | "modern" | "soham" | "overleaf"): Promise<Blob> {
+export async function getTemplatePreview(templateId: TemplateId): Promise<Blob> {
   const resp = await fetch(`${BASE}/download/template-preview/${templateId}`);
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({ detail: "Template preview failed" }));

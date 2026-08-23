@@ -15,7 +15,6 @@ from fastapi import Header, HTTPException
 _URL = (os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL", "")).rstrip("/")
 _ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")
 _SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-DEFAULT_ADMIN_EMAIL = "edlahareen@gmail.com"
 
 
 @dataclass
@@ -26,9 +25,8 @@ class VerifiedUser:
 
 
 def _has_admin_access(user: dict) -> bool:
-    email = (user.get("email") or "").strip().lower()
     metadata = user.get("user_metadata") or {}
-    return bool(metadata.get("is_admin")) or (bool(DEFAULT_ADMIN_EMAIL) and email == DEFAULT_ADMIN_EMAIL.lower())
+    return bool(metadata.get("is_admin"))
 
 
 def verify_token(authorization: Optional[str]) -> str:

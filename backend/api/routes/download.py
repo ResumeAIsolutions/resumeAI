@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 from api.models.requests import DownloadRequest
 from pipeline.orchestrator import get_session
-from generators.latex_generator import generate_pdf_latex
+from generators.latex_generator import generate_pdf_latex, VALID_TEMPLATES
 from generators.pdf_generator import generate_pdf
 from generators.docx_generator import generate_docx
 import utils.supabase_store as supabase_store
@@ -158,7 +158,7 @@ def _resolve_bullets(resume_structured: dict, accepted_bullets: dict, rewrites: 
 
 @router.get("/download/template-preview/{template_id}")
 async def download_template_preview(template_id: str):
-    if template_id not in {"jake", "modern", "soham", "overleaf"}:
+    if template_id not in VALID_TEMPLATES:
         raise HTTPException(status_code=404, detail="Template not found.")
 
     resume_structured = _build_template_preview_resume()
