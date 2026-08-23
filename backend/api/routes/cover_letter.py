@@ -102,7 +102,7 @@ def _parse_json_response(text: str) -> dict:
 
 
 async def _require_pro(authorization: Optional[str]) -> None:
-    """Raise 403 if the user is not on a Pro tier. Admins always pass. No-ops if Supabase is not configured (dev mode)."""
+    """Raise 403 if the user is not on a Pro tier. No-op only in local dev when Supabase is absent."""
     if not sub_store._URL:
         return  # Supabase not configured — skip gate in dev
     if not authorization:
@@ -113,7 +113,10 @@ async def _require_pro(authorization: Optional[str]) -> None:
     except HTTPException:
         raise
     except Exception:
-        return  # auth service unreachable — allow through
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "billing_unavailable", "message": "We could not verify your Pro access right now. Please try again."},
+        )
     if tier != "pro":
         raise HTTPException(status_code=403, detail={"code": "upgrade_required", "message": "Cover letter generation is a Pro feature."})
 

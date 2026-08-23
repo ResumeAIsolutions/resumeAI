@@ -169,9 +169,11 @@ export function AdminPage({ user, onLogoClick, onBack }: Props) {
           <span className="mono" style={{ fontSize: 12, color: "var(--lime)" }}>admin</span>
           <UserNav
             user={user}
+            isAdmin
             onDashboard={onBack}
             onSignOut={() => { supabase.auth.signOut(); onBack(); }}
             onNewResume={onBack}
+            onAdminPanel={() => undefined}
           />
         </div>
       </nav>

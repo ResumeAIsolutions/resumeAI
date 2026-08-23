@@ -92,6 +92,21 @@ def get_razorpay_subscription_id(user_id: str) -> Optional[str]:
     return None
 
 
+def get_user_id_by_subscription_reference(subscription_reference: str) -> Optional[str]:
+    """Return the user that already owns a stored payment/order reference, if any."""
+    rows = _req(
+        "GET",
+        "user_subscriptions",
+        params=(
+            f"stripe_subscription_id=eq.{urllib.parse.quote(subscription_reference, safe='')}"
+            "&select=user_id&limit=1"
+        ),
+    )
+    if rows and isinstance(rows, list) and len(rows) > 0:
+        return rows[0].get("user_id")
+    return None
+
+
 def get_monthly_usage(user_id: str) -> int:
     month = datetime.utcnow().strftime("%Y-%m")
     rows = _req("GET", "tailor_usage", params=f"user_id=eq.{urllib.parse.quote(user_id, safe='')}&month=eq.{month}&select=count")

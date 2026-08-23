@@ -5,11 +5,10 @@ import type { Tier } from "../types";
 interface Props {
   user: User;
   tier: Tier;
-  onCancelSubscription: () => void;
   onUpgrade: () => void;
 }
 
-export function SettingsPage({ user, tier, onCancelSubscription, onUpgrade }: Props) {
+export function SettingsPage({ user, tier, onUpgrade }: Props) {
   return (
     <div
       style={{
@@ -138,15 +137,13 @@ export function SettingsPage({ user, tier, onCancelSubscription, onUpgrade }: Pr
                 </div>
                 <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6 }}>
                   {tier === "pro"
-                    ? "You have access to premium templates, DOCX export, and cover-letter generation."
+                    ? "Your lifetime Pro access is active on this account. No renewal or cancellation is required."
                     : "Upgrade to unlock premium templates, DOCX export, and cover letters."}
                 </p>
               </div>
 
               {tier === "pro" ? (
-                <button type="button" className="ghost-btn" onClick={onCancelSubscription} style={{ color: "var(--error)" }}>
-                  Cancel Plan
-                </button>
+                <div className="pill pill-pro">Lifetime Access</div>
               ) : (
                 <button type="button" className="accent-btn" onClick={onUpgrade}>
                   <Sparkles size={16} />

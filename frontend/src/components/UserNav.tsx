@@ -1,21 +1,19 @@
 import { useState, useRef, useEffect } from "react";
-import { LogOut, LayoutDashboard, ChevronDown, FileText, Shield, X, MessageSquare } from "lucide-react";
+import { LogOut, LayoutDashboard, ChevronDown, FileText, Shield, MessageSquare } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import type { User } from "@supabase/supabase-js";
-import type { Tier } from "../types";
 
 interface Props {
   user: User;
-  tier?: Tier;
   onDashboard: () => void;
   onSignOut: () => void;
   onNewResume: () => void;
-  onCancelSubscription?: () => void;
   onFeedbackInbox?: () => void;
+  onAdminPanel?: () => void;
+  isAdmin?: boolean;
 }
 
-export function UserNav({ user, tier, onDashboard, onSignOut, onNewResume, onCancelSubscription, onFeedbackInbox }: Props) {
-  const isAdmin = Boolean(user.user_metadata?.is_admin) || user.email === "edlahareen@gmail.com";
+export function UserNav({ user, onDashboard, onSignOut, onNewResume, onFeedbackInbox, onAdminPanel, isAdmin = false }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -101,10 +99,9 @@ export function UserNav({ user, tier, onDashboard, onSignOut, onNewResume, onCan
               { icon: <LayoutDashboard size={14} />, label: "My Dashboard", action: () => { setOpen(false); onDashboard(); } },
               { icon: <FileText size={14} />, label: "Tailor New Resume", action: () => { setOpen(false); onNewResume(); } },
               ...(isAdmin ? [
-                { icon: <Shield size={14} />, label: "Admin Panel", action: () => { setOpen(false); window.location.href = "/admin"; } },
+                { icon: <Shield size={14} />, label: "Admin Panel", action: () => { setOpen(false); onAdminPanel ? onAdminPanel() : (window.location.href = "/admin"); } },
                 { icon: <MessageSquare size={14} />, label: "Feedback Inbox", action: () => { setOpen(false); onFeedbackInbox?.(); } },
               ] : []),
-              ...(tier === "pro" && onCancelSubscription ? [{ icon: <X size={14} />, label: "Cancel subscription", action: () => { setOpen(false); onCancelSubscription(); } }] : []),
             ].map(({ icon, label, action }) => (
               <button
                 key={label}

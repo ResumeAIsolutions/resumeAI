@@ -8,4 +8,5 @@ CONFIG = TemplateConfig(
     section_style="modern_green",
     bullet_char=r"\textbullet",
     accent_rgb=(68, 149, 162),   # Teal #4495A2 from Microsoft template
+    header_style="left_large",
 )

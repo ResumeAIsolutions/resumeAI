@@ -61,7 +61,16 @@ export interface TailorResponse {
   changed_bullets: number;
 }
 
-export type TemplateId = "jake" | "modern" | "soham" | "overleaf";
+export type TemplateId =
+  | "jake"
+  | "modern"
+  | "soham"
+  | "overleaf"
+  | "executive"
+  | "tech"
+  | "swiss"
+  | "crimson"
+  | "compact";
 
 export interface DownloadRequest {
   session_id: string;

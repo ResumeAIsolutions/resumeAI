@@ -1,25 +1,24 @@
 """
-Razorpay Subscriptions integration (monthly Pro):
-  POST /api/razorpay/subscribe              — create subscription → return key + subscription_id
-  POST /api/razorpay/verify                 — verify signature → activate Pro
-  POST /api/razorpay/cancel                 — cancel active subscription → downgrade to free
-  POST /api/razorpay/webhook                — subscription lifecycle events
-  GET  /api/razorpay/subscription/{id}      — return tier + usage
+Razorpay Orders integration (one-time Pro payment):
+  POST /api/razorpay/order               — create order → return key + order_id + amount
+  POST /api/razorpay/verify              — verify payment signature → activate Pro
+  POST /api/razorpay/cancel              — downgrade to free (DB-only, no Razorpay API call)
+  POST /api/razorpay/webhook             — payment.captured lifecycle event
+  GET  /api/razorpay/subscription/{id}   — return tier + usage
 """
-import base64
 import hashlib
 import hmac
 import json
 import os
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+import urllib.parse
+import uuid
 from typing import Optional
 
 import asyncio
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 import utils.subscription_store as sub_store
@@ -31,14 +30,15 @@ _KEY_ID = os.getenv("RAZORPAY_KEY_ID", "")
 _KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET", "")
 _WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET", "")
 
-# Plan IDs — create these once in the Razorpay dashboard (type: recurring, period: monthly)
-_PLAN_ID_INR = os.getenv("RAZORPAY_PLAN_ID_INR", "")
-_PLAN_ID_USD = os.getenv("RAZORPAY_PLAN_ID_USD", "")
+# Amount in smallest currency unit — override via env if needed
+_AMOUNT_INR = int(os.getenv("RAZORPAY_AMOUNT_INR", "74900"))   # ₹749 in paise
+_AMOUNT_USD = int(os.getenv("RAZORPAY_AMOUNT_USD", "900"))     # $9 in cents
 
 _BASE = "https://api.razorpay.com/v1"
 
 
 def _auth() -> str:
+    import base64
     return "Basic " + base64.b64encode(f"{_KEY_ID}:{_KEY_SECRET}".encode()).decode()
 
 
@@ -63,124 +63,128 @@ def _get(path: str) -> dict:
     try:
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read().decode())
-    except Exception:
-        return {}
+    except urllib.error.HTTPError as e:
+        err = json.loads(e.read().decode())
+        raise HTTPException(status_code=502, detail=err.get("error", {}).get("description", "Razorpay error"))
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=str(e))
 
 
-def _unix_to_iso(ts: Optional[int]) -> Optional[str]:
-    if not ts:
-        return None
-    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+def _expected_amount_for_currency(currency: str) -> int:
+    return _AMOUNT_USD if currency.upper() == "USD" else _AMOUNT_INR
 
 
-# ── Subscribe ─────────────────────────────────────────────────────────────────
+# ── Create Order ──────────────────────────────────────────────────────────────
 
-class SubscribeRequest(BaseModel):
-    user_id: str
+class OrderRequest(BaseModel):
     currency: str = "INR"  # "INR" or "USD"
 
 
-@router.post("/razorpay/subscribe")
-async def create_subscription(req: SubscribeRequest, authorization: Optional[str] = Header(None)):
-    """Create a Razorpay monthly subscription. Requires valid JWT."""
+@router.post("/razorpay/order")
+async def create_order(req: OrderRequest, authorization: Optional[str] = Header(None)):
+    """Create a one-time Razorpay order for Pro lifetime access. Requires valid JWT."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required.")
-    verified_user_id = await asyncio.to_thread(auth_utils.verify_token, authorization)
-    if verified_user_id != req.user_id:
-        raise HTTPException(status_code=403, detail="user_id does not match authenticated user.")
+    user_id = await asyncio.to_thread(auth_utils.verify_token, authorization)
     if not _KEY_ID or not _KEY_SECRET:
         raise HTTPException(status_code=500, detail="Razorpay is not configured.")
 
     currency = req.currency.upper()
-    plan_id = _PLAN_ID_USD if currency == "USD" and _PLAN_ID_USD else _PLAN_ID_INR
-    if not plan_id:
-        raise HTTPException(status_code=500, detail="Razorpay plan not configured. Set RAZORPAY_PLAN_ID_INR in env.")
+    if currency not in ("INR", "USD"):
+        currency = "INR"
+    amount = _AMOUNT_USD if currency == "USD" else _AMOUNT_INR
 
-    subscription = _post("/subscriptions", {
-        "plan_id": plan_id,
-        "total_count": 120,  # 10 years of monthly billing cycles
-        "customer_notify": 1,
-        "notes": {"user_id": req.user_id},
+    order = _post("/orders", {
+        "amount": amount,
+        "currency": currency,
+        "receipt": f"order_{uuid.uuid4().hex[:12]}",
+        "notes": {"user_id": user_id},
     })
     return {
-        "subscription_id": subscription["id"],
-        "short_url": subscription.get("short_url", ""),
+        "order_id": order["id"],
         "key_id": _KEY_ID,
+        "amount": amount,
         "currency": currency,
     }
 
 
-# ── Verify ────────────────────────────────────────────────────────────────────
+# ── Verify Payment ────────────────────────────────────────────────────────────
 
 class VerifyRequest(BaseModel):
-    user_id: str
     razorpay_payment_id: str
-    razorpay_subscription_id: str
+    razorpay_order_id: str
     razorpay_signature: str
 
 
 @router.post("/razorpay/verify")
 async def verify_payment(req: VerifyRequest, authorization: Optional[str] = Header(None)):
-    """Verify Razorpay subscription payment signature and activate Pro."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header required.")
-    verified_user_id = await asyncio.to_thread(auth_utils.verify_token, authorization)
-    if verified_user_id != req.user_id:
-        raise HTTPException(status_code=403, detail="user_id does not match authenticated user.")
-
-    # Subscription signature: HMAC(key_secret, payment_id + "|" + subscription_id)
-    msg = f"{req.razorpay_payment_id}|{req.razorpay_subscription_id}".encode()
-    expected = hmac.new(_KEY_SECRET.encode(), msg, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, req.razorpay_signature):
-        raise HTTPException(status_code=400, detail="Invalid payment signature.")
-
-    # Fetch subscription to get current billing period end
-    sub_data = _get(f"/subscriptions/{req.razorpay_subscription_id}")
-    period_end = _unix_to_iso(sub_data.get("current_end"))
-
-    sub_store.upsert_subscription(
-        user_id=verified_user_id,
-        tier="pro",
-        stripe_customer_id=None,
-        stripe_subscription_id=req.razorpay_subscription_id,
-        status="active",
-        period_end=period_end,
-    )
-    return {"ok": True}
-
-
-# ── Cancel ────────────────────────────────────────────────────────────────────
-
-@router.post("/razorpay/cancel")
-async def cancel_subscription(authorization: Optional[str] = Header(None)):
-    """Cancel the user's active subscription immediately. Requires valid JWT."""
+    """Verify Razorpay order payment signature and activate Pro (lifetime)."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required.")
     user_id = await asyncio.to_thread(auth_utils.verify_token, authorization)
 
-    sub_id = await asyncio.to_thread(sub_store.get_razorpay_subscription_id, user_id)
-    if not sub_id:
-        raise HTTPException(status_code=404, detail="No active subscription found.")
+    # Orders signature: HMAC(key_secret, order_id + "|" + payment_id)
+    msg = f"{req.razorpay_order_id}|{req.razorpay_payment_id}".encode()
+    expected = hmac.new(_KEY_SECRET.encode(), msg, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, req.razorpay_signature):
+        raise HTTPException(status_code=400, detail="Invalid payment signature.")
 
-    # Cancel immediately in Razorpay
-    _post(f"/subscriptions/{sub_id}/cancel", {"cancel_at_cycle_end": 0})
+    # Fetch canonical entities from Razorpay instead of trusting checkout payload alone.
+    payment = _get(f"/payments/{urllib.parse.quote(req.razorpay_payment_id, safe='')}")
+    order = _get(f"/orders/{urllib.parse.quote(req.razorpay_order_id, safe='')}")
 
-    # Downgrade in DB
+    if payment.get("id") != req.razorpay_payment_id:
+        raise HTTPException(status_code=400, detail="Payment verification mismatch.")
+    if payment.get("order_id") != req.razorpay_order_id:
+        raise HTTPException(status_code=400, detail="Payment does not belong to this order.")
+    if payment.get("status") != "captured":
+        raise HTTPException(status_code=400, detail="Payment is not captured.")
+
+    order_notes = order.get("notes") or {}
+    order_owner = order_notes.get("user_id")
+    if not order_owner or order_owner != user_id:
+        raise HTTPException(status_code=403, detail="This order does not belong to the authenticated user.")
+
+    if payment.get("amount") != order.get("amount") or payment.get("currency") != order.get("currency"):
+        raise HTTPException(status_code=400, detail="Payment amount does not match the order.")
+
+    expected_amount = _expected_amount_for_currency(str(order.get("currency", "INR")))
+    if order.get("amount") != expected_amount:
+        raise HTTPException(status_code=400, detail="Order amount is not valid for the active Pro plan.")
+
+    existing_owner = sub_store.get_user_id_by_subscription_reference(req.razorpay_order_id)
+    if existing_owner and existing_owner != user_id:
+        raise HTTPException(status_code=409, detail="This payment has already been redeemed by another account.")
+
     sub_store.upsert_subscription(
         user_id=user_id,
-        tier="free",
+        tier="pro",
         stripe_customer_id=None,
-        stripe_subscription_id=sub_id,
-        status="canceled",
+        stripe_subscription_id=req.razorpay_order_id,  # store order_id as payment reference
+        status="active",
+        period_end=None,  # lifetime — no expiry
     )
     return {"ok": True}
+
+
+# ── Cancel (downgrade) ────────────────────────────────────────────────────────
+
+@router.post("/razorpay/cancel")
+async def cancel_subscription(authorization: Optional[str] = Header(None)):
+    """Lifetime purchases are not cancelable in-app."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required.")
+    raise HTTPException(
+        status_code=405,
+        detail="ResumeAI Pro is a one-time lifetime purchase and cannot be canceled in-app.",
+    )
 
 
 # ── Webhook ───────────────────────────────────────────────────────────────────
 
 @router.post("/razorpay/webhook")
 async def webhook(request: Request):
-    """Handle Razorpay subscription lifecycle events."""
+    """Handle Razorpay payment.captured event for order-based payments."""
     raw = await request.body()
 
     if _WEBHOOK_SECRET:
@@ -192,88 +196,42 @@ async def webhook(request: Request):
     event = json.loads(raw.decode())
     event_type = event.get("event", "")
     payload = event.get("payload", {})
-    sub_entity = payload.get("subscription", {}).get("entity", {})
 
-    sub_id = sub_entity.get("id", "")
-    user_id = sub_entity.get("notes", {}).get("user_id", "")
-    period_end = _unix_to_iso(sub_entity.get("current_end"))
+    if event_type == "payment.captured":
+        payment = payload.get("payment", {}).get("entity", {})
+        if payment.get("status") != "captured":
+            return {"ok": True}
 
-    if not user_id:
-        return {"ok": True}  # Can't process without user_id
+        order_id = payment.get("order_id", "")
+        user_id = payment.get("notes", {}).get("user_id", "")
+        if not user_id and order_id:
+            try:
+                order = _get(f"/orders/{urllib.parse.quote(order_id, safe='')}")
+                user_id = (order.get("notes") or {}).get("user_id", "")
+            except HTTPException:
+                user_id = ""
 
-    if event_type in ("subscription.activated", "subscription.charged"):
-        sub_store.upsert_subscription(
-            user_id=user_id,
-            tier="pro",
-            stripe_customer_id=None,
-            stripe_subscription_id=sub_id,
-            status="active",
-            period_end=period_end,
-        )
-    elif event_type == "subscription.halted":
-        # Payment failed — keep Pro tier during Razorpay's retry/grace period
-        sub_store.upsert_subscription(
-            user_id=user_id,
-            tier="pro",
-            stripe_customer_id=None,
-            stripe_subscription_id=sub_id,
-            status="halted",
-            period_end=period_end,
-        )
-    elif event_type in ("subscription.cancelled", "subscription.completed"):
-        sub_store.upsert_subscription(
-            user_id=user_id,
-            tier="free",
-            stripe_customer_id=None,
-            stripe_subscription_id=sub_id,
-            status="canceled",
-        )
+        if user_id and order_id:
+            existing_owner = sub_store.get_user_id_by_subscription_reference(order_id)
+            if existing_owner and existing_owner != user_id:
+                raise HTTPException(status_code=409, detail="This payment has already been redeemed by another account.")
+            sub_store.upsert_subscription(
+                user_id=user_id,
+                tier="pro",
+                stripe_customer_id=None,
+                stripe_subscription_id=order_id,
+                status="active",
+                period_end=None,
+            )
 
     return {"ok": True}
-
-
-# ── Payment callback (redirect flow) ─────────────────────────────────────────
-
-_FRONTEND_URL = os.getenv("FRONTEND_URL", "https://resume-ai-omega-nine.vercel.app")
-
-@router.get("/razorpay/callback")
-async def payment_callback(
-    razorpay_payment_id: str = "",
-    razorpay_subscription_id: str = "",
-    razorpay_signature: str = "",
-):
-    """Razorpay redirects here after hosted checkout payment. Verify + upgrade user."""
-    if not razorpay_payment_id or not razorpay_subscription_id or not razorpay_signature:
-        return RedirectResponse(f"{_FRONTEND_URL}?payment=failed")
-
-    msg = f"{razorpay_payment_id}|{razorpay_subscription_id}".encode()
-    expected = hmac.new(_KEY_SECRET.encode(), msg, hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(expected, razorpay_signature):
-        return RedirectResponse(f"{_FRONTEND_URL}?payment=failed")
-
-    # Look up user_id from subscription notes
-    sub_data = _get(f"/subscriptions/{razorpay_subscription_id}")
-    user_id = sub_data.get("notes", {}).get("user_id", "")
-    if not user_id:
-        return RedirectResponse(f"{_FRONTEND_URL}?payment=failed")
-
-    period_end = _unix_to_iso(sub_data.get("current_end"))
-    sub_store.upsert_subscription(
-        user_id=user_id,
-        tier="pro",
-        stripe_customer_id=None,
-        stripe_subscription_id=razorpay_subscription_id,
-        status="active",
-        period_end=period_end,
-    )
-    return RedirectResponse(f"{_FRONTEND_URL}?payment=success")
 
 
 # ── Get subscription info ─────────────────────────────────────────────────────
 
 @router.get("/razorpay/subscription/{user_id}")
 async def get_subscription(user_id: str, authorization: Optional[str] = Header(None)):
-    """Return tier + usage for the authenticated user only. Admins always get pro."""
+    """Return tier + usage for the authenticated user. Admins always get pro."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Authorization header required.")
     verified = await asyncio.to_thread(auth_utils.verify_token_full, authorization)

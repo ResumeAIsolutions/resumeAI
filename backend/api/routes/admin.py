@@ -11,56 +11,35 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
+from utils import auth as auth_utils
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
-_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-# Anon key is needed as apikey when validating user JWTs via /auth/v1/user
-_ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")
+
+def _config() -> tuple[str, str]:
+    url = (os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL", "")).rstrip("/")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    return url, key
 
 
 def _get(path: str, params: str = "") -> Any:
-    if not _URL:
+    url_base, service_key = _config()
+    if not url_base:
         raise RuntimeError("SUPABASE_URL is not configured")
-    url = f"{_URL}{path}"
+    if not service_key:
+        raise RuntimeError("SUPABASE_SERVICE_ROLE_KEY is not configured")
+    url = f"{url_base}{path}"
     if params:
         url = f"{url}?{params}"
     req = urllib.request.Request(url, method="GET")
-    req.add_header("Authorization", f"Bearer {_KEY}")
-    req.add_header("apikey", _KEY)
+    req.add_header("Authorization", f"Bearer {service_key}")
+    req.add_header("apikey", service_key)
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.loads(resp.read().decode())
 
 
 def _verify_admin(authorization: Optional[str] = Header(None)) -> str:
-    """Verify Supabase JWT and assert is_admin in user_metadata. Returns user_id."""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header required.")
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing token")
-    token = authorization[7:]
-
-    if not _URL:
-        raise HTTPException(status_code=503, detail="SUPABASE_URL is not configured on this server.")
-
-    # Validate JWT via Supabase — this checks the signature server-side
-    try:
-        req = urllib.request.Request(f"{_URL}/auth/v1/user", method="GET")
-        req.add_header("Authorization", f"Bearer {token}")
-        req.add_header("apikey", _ANON_KEY or _KEY)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            user = json.loads(resp.read().decode())
-    except urllib.error.HTTPError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    except Exception:
-        raise HTTPException(status_code=503, detail="Auth service unavailable")
-
-    metadata = user.get("user_metadata") or {}
-    if not metadata.get("is_admin"):
-        raise HTTPException(status_code=403, detail="Admin access required")
-
-    return user["id"]
+    return auth_utils.verify_admin_token(authorization).user_id
 
 
 @router.get("/me")
@@ -136,6 +115,11 @@ def set_tier(user_id: str, body: SetTierRequest, admin_id: str = Depends(_verify
     """Manually promote or demote a user's tier."""
     if body.tier not in ("free", "pro"):
         raise HTTPException(status_code=400, detail="tier must be 'free' or 'pro'")
+    url_base, service_key = _config()
+    if not url_base:
+        raise HTTPException(status_code=503, detail="SUPABASE_URL is not configured")
+    if not service_key:
+        raise HTTPException(status_code=503, detail="SUPABASE_SERVICE_ROLE_KEY is not configured")
     payload = {
         "user_id": user_id,
         "tier": body.tier,
@@ -143,10 +127,10 @@ def set_tier(user_id: str, body: SetTierRequest, admin_id: str = Depends(_verify
         "updated_at": datetime.utcnow().isoformat(),
     }
     data = json.dumps(payload).encode()
-    url = f"{_URL}/rest/v1/user_subscriptions"
+    url = f"{url_base}/rest/v1/user_subscriptions"
     req = urllib.request.Request(url, method="POST", data=data)
-    req.add_header("Authorization", f"Bearer {_KEY}")
-    req.add_header("apikey", _KEY)
+    req.add_header("Authorization", f"Bearer {service_key}")
+    req.add_header("apikey", service_key)
     req.add_header("Content-Type", "application/json")
     req.add_header("Prefer", "return=minimal,resolution=merge-duplicates")
     try:
@@ -159,8 +143,6 @@ def set_tier(user_id: str, body: SetTierRequest, admin_id: str = Depends(_verify
 
 # ─── Grant / Revoke Admin ───────────────────────────────────────────────────────
 
-DEFAULT_ADMIN_EMAIL = "edlahareen@gmail.com"
-
 
 class EmailRequest(BaseModel):
     email: str
@@ -169,6 +151,9 @@ class EmailRequest(BaseModel):
 def _set_user_admin_metadata(email: str, is_admin: bool) -> bool:
     """Find user by email in Supabase Auth and set is_admin in user_metadata."""
     try:
+        url_base, service_key = _config()
+        if not url_base or not service_key:
+            return False
         auth_data = _get("/auth/v1/admin/users", "per_page=1000&page=1")
         users = auth_data.get("users", [])
         target = next((u for u in users if u.get("email") == email), None)
@@ -178,10 +163,10 @@ def _set_user_admin_metadata(email: str, is_admin: bool) -> bool:
         user_id = target["id"]
         # PATCH user metadata via Admin API
         payload = json.dumps({"user_metadata": {"is_admin": is_admin}}).encode()
-        url = f"{_URL}/auth/v1/admin/users/{user_id}"
+        url = f"{url_base}/auth/v1/admin/users/{user_id}"
         req = urllib.request.Request(url, method="PUT", data=payload)
-        req.add_header("Authorization", f"Bearer {_KEY}")
-        req.add_header("apikey", _KEY)
+        req.add_header("Authorization", f"Bearer {service_key}")
+        req.add_header("apikey", service_key)
         req.add_header("Content-Type", "application/json")
         with urllib.request.urlopen(req, timeout=10) as resp:
             resp.read()
@@ -203,8 +188,6 @@ def grant_admin(body: EmailRequest, admin_id: str = Depends(_verify_admin)):
 @router.post("/revoke-admin")
 def revoke_admin(body: EmailRequest, admin_id: str = Depends(_verify_admin)):
     """Revoke admin access from a user by email."""
-    if body.email == DEFAULT_ADMIN_EMAIL:
-        raise HTTPException(status_code=403, detail="Cannot revoke the default admin.")
     success = _set_user_admin_metadata(body.email, False)
     if not success:
         raise HTTPException(status_code=404, detail=f"User {body.email!r} not found.")

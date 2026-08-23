@@ -84,12 +84,13 @@ async def start_tailor(
             verified = await asyncio.to_thread(auth_utils.verify_token_full, authorization)
             user_id = verified.user_id
             is_admin = verified.is_admin
-        except HTTPException as e:
-            if e.status_code == 401:
-                raise  # invalid token — reject
-            user_id = None  # 503 or auth not configured — proceed as unauthenticated
+        except HTTPException:
+            raise
         except Exception:
-            user_id = None  # unexpected error — proceed as unauthenticated
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "auth_unavailable", "message": "We could not verify your sign-in right now. Please try again."},
+            )
 
     # Enforce free tier tailor limit for logged-in users.
     # Usage is NOT incremented here — it's incremented in the orchestrator
@@ -108,8 +109,10 @@ async def start_tailor(
         except HTTPException:
             raise  # limit_reached must propagate
         except Exception:
-            # Supabase unreachable — allow through
-            pass
+            raise HTTPException(
+                status_code=503,
+                detail={"code": "billing_unavailable", "message": "We could not verify your plan usage right now. Please try again."},
+            )
 
     request_id = str(uuid.uuid4())
     progress_store.create(request_id)

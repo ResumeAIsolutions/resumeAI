@@ -1,6 +1,6 @@
 import { X, Zap, Check, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { createRazorpaySubscription, verifyRazorpayPayment } from "../api/client";
+import { createRazorpayOrder, verifyRazorpayPayment } from "../api/client";
 import { supabase } from "../lib/supabase";
 import type { User } from "@supabase/supabase-js";
 
@@ -22,7 +22,7 @@ interface Props {
 const REASON_COPY: Record<Props["reason"], { title: string; subtitle: string }> = {
   tailor_limit: {
     title: "You've used all 3 free tailors",
-    subtitle: "Upgrade to Pro for unlimited resume tailoring every month.",
+    subtitle: "Upgrade to Pro for unlimited resume tailoring — one-time payment, lifetime access.",
   },
   docx: {
     title: "DOCX download is a Pro feature",
@@ -33,15 +33,15 @@ const REASON_COPY: Record<Props["reason"], { title: string; subtitle: string }> 
     subtitle: "Upgrade to Pro to generate AI-powered cover letters.",
   },
   history: {
-    title: "Resume history is a Pro feature",
-    subtitle: "Upgrade to Pro to save and revisit all your tailored resumes.",
+    title: "Pro unlocks advanced resume workflows",
+    subtitle: "Upgrade to Pro for premium templates, DOCX export, and AI cover letters.",
   },
 };
 
 const PRO_FEATURES = [
-  "Unlimited tailors per month",
+  "Unlimited tailors (lifetime access)",
   "PDF + DOCX download",
-  "Resume history & dashboard",
+  "Premium resume templates",
   "AI cover letter generation",
   "Priority processing",
 ];
@@ -76,22 +76,23 @@ export function UpgradeModal({ reason, user, onClose, onSignIn, onUpgradeSuccess
 
       const { data: { session } } = await supabase.auth.getSession();
       const accessToken = session?.access_token ?? "";
-      const { subscription_id, key_id } = await createRazorpaySubscription(user.id, currency, accessToken);
+      const { order_id, key_id, amount } = await createRazorpayOrder(currency, accessToken);
 
-      // Open Razorpay Checkout popup for subscription payment
+      // Open Razorpay Checkout popup for one-time order payment
       await new Promise<void>((resolve, reject) => {
         const rzp = new window.Razorpay({
           key: key_id,
-          subscription_id,
+          amount,
+          currency,
+          order_id,
           name: "ResumeAI",
-          description: "Pro Monthly Subscription",
-          handler: async (response: { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }) => {
+          description: "Pro Lifetime Access",
+          handler: async (response: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
             try {
               await verifyRazorpayPayment(
                 {
-                  user_id: user.id,
                   razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_subscription_id: response.razorpay_subscription_id,
+                  razorpay_order_id: response.razorpay_order_id,
                   razorpay_signature: response.razorpay_signature,
                 },
                 accessToken,
@@ -165,7 +166,7 @@ export function UpgradeModal({ reason, user, onClose, onSignIn, onUpgradeSuccess
               You're Pro now!
             </h2>
             <p style={{ fontSize: 14, color: "var(--text-secondary)", marginBottom: "1.5rem", lineHeight: 1.55 }}>
-              Your subscription is active. Reload the page to access all Pro features.
+              Your Pro access is active. Reload the page to unlock all Pro features.
             </p>
             <button
               onClick={onClose}
@@ -206,7 +207,7 @@ export function UpgradeModal({ reason, user, onClose, onSignIn, onUpgradeSuccess
                 <span style={{ fontSize: "2rem", fontWeight: 700, color: "var(--white-primary)", letterSpacing: "-0.03em" }}>
                   {currency === "INR" ? "₹749" : "$9"}
                 </span>
-                <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>/month</span>
+                <span style={{ fontSize: 14, color: "var(--text-secondary)" }}>one-time</span>
               </div>
               <div style={{ display: "flex", borderRadius: 9999, border: "1px solid rgba(255,255,255,0.1)", overflow: "hidden" }}>
                 {(["INR", "USD"] as const).map((c) => (
@@ -246,7 +247,7 @@ export function UpgradeModal({ reason, user, onClose, onSignIn, onUpgradeSuccess
             </button>
 
             <p style={{ marginTop: "0.875rem", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
-              Cancel anytime. No hidden fees.
+              One-time payment. No renewal required.
             </p>
           </>
         )}

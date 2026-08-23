@@ -125,11 +125,11 @@ def save_session(
 
 
 def load_session(session_id: str) -> Optional[Dict[str, Any]]:
-    """Return resume_structured + rewrites for download. None if not found."""
+    """Return session data needed for download auth and generation. None if not found."""
     rows = _req(
         "GET",
         "tailor_sessions",
-        params=f"session_id=eq.{urllib.parse.quote(session_id, safe='')}&select=resume_structured,rewrites",
+        params=f"session_id=eq.{urllib.parse.quote(session_id, safe='')}&select=resume_structured,rewrites,user_id",
     )
     if not rows or not isinstance(rows, list) or len(rows) == 0:
         return None

@@ -17,15 +17,13 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel
+from utils import auth as auth_utils
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
 _URL = (os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL", "")).rstrip("/")
 _SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 _ANON_KEY = os.getenv("VITE_SUPABASE_ANON_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")
-
-# ─── Hard-coded default admin email ────────────────────────────────────────────
-DEFAULT_ADMIN_EMAIL = "edlahareen@gmail.com"
 FEEDBACK_BUCKET = "feedback-screenshots"
 
 
@@ -89,32 +87,7 @@ def _upload_screenshot(file_bytes: bytes, user_id: Optional[str], ext: str) -> O
 
 
 def _verify_admin(authorization: Optional[str] = Header(None)) -> str:
-    """Verify Supabase JWT and check admin via user_metadata OR default email."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Authorization header required.")
-    token = authorization[7:]
-    if not _URL:
-        raise HTTPException(status_code=503, detail="Auth service not configured.")
-
-    try:
-        req = urllib.request.Request(f"{_URL}/auth/v1/user", method="GET")
-        req.add_header("Authorization", f"Bearer {token}")
-        req.add_header("apikey", _ANON_KEY or _SERVICE_KEY)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            user = json.loads(resp.read().decode())
-    except urllib.error.HTTPError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token.")
-    except Exception:
-        raise HTTPException(status_code=503, detail="Auth service unavailable.")
-
-    email = user.get("email", "")
-    metadata = user.get("user_metadata") or {}
-
-    # Default admin always gets access
-    if email == DEFAULT_ADMIN_EMAIL or metadata.get("is_admin"):
-        return user["id"]
-
-    raise HTTPException(status_code=403, detail="Admin access required.")
+    return auth_utils.verify_admin_token(authorization).user_id
 
 
 def _optional_user_from_token(authorization: Optional[str]) -> Optional[str]:

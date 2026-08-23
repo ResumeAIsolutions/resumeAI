@@ -19,8 +19,8 @@ from typing import Dict, Optional, Tuple, List
 from generators.latex_templates import TemplateConfig
 
 def _build_registry() -> Dict[str, TemplateConfig]:
-    from generators.templates import jake, modern, soham, overleaf
-    return {t.CONFIG.template_id: t.CONFIG for t in [jake, modern, soham, overleaf]}
+    from generators.templates import jake, modern, soham, overleaf, executive, tech, swiss, crimson, compact
+    return {t.CONFIG.template_id: t.CONFIG for t in [jake, modern, soham, overleaf, executive, tech, swiss, crimson, compact]}
 
 _TEMPLATE_REGISTRY: Dict[str, TemplateConfig] = _build_registry()
 VALID_TEMPLATES = frozenset(_TEMPLATE_REGISTRY.keys())
@@ -98,7 +98,9 @@ _LATEX_SPECIAL = {
 def _esc(text: str) -> str:
     if not text:
         return ""
-    result = text.replace("\\", r"\textbackslash{}")
+    # Unicode dashes → TeX ligatures (T1-encoded fonts like helvet/lmodern drop the raw glyphs)
+    result = text.replace("—", "---").replace("–", "--")
+    result = result.replace("\\", r"\textbackslash{}")
     for char, replacement in _LATEX_SPECIAL.items():
         if char != "\\":
             result = result.replace(char, replacement)
@@ -233,8 +235,8 @@ def _render_header(resume: dict, cfg: Optional[TemplateConfig] = None) -> str:
             r"\href{" + _esc_url(url) + r"}{\underline{" + _esc(display) + r"}}"
         )
 
-    # Modern green: left-aligned large name, contact on next line
-    if cfg and cfg.section_style == "modern_green":
+    # Left-aligned large name, contact on next line
+    if cfg and cfg.header_style == "left_large":
         lines = []
         lines.append(r"{\nametext{" + name + r"}} \\[6pt]")
         if title:
@@ -248,7 +250,7 @@ def _render_header(resume: dict, cfg: Optional[TemplateConfig] = None) -> str:
 
     # Default: centered header
     lines = [r"\begin{center}"]
-    lines.append(r"    {\Large \textbf{" + name + r"}} \\[2pt]")
+    lines.append(r"    {\nametext{" + name + r"}} \\[2pt]")
     if title:
         lines.append(r"    " + title + r" \\[1pt]")
     if location:
@@ -444,6 +446,9 @@ def _build_preamble(cfg: TemplateConfig) -> str:
         r"\pagenumbering{gobble}",
     ]
 
+    if cfg.font_setup:
+        lines.append(cfg.font_setup)
+
     # Color setup
     if cfg.accent_rgb:
         r, g, b = cfg.accent_rgb
@@ -483,14 +488,32 @@ def _build_preamble(cfg: TemplateConfig) -> str:
             r"\titleformat{\section}{\scshape\raggedright\large}{}{0em}{}[\color{black}\titlerule]",
             r"\titlespacing*{\section}{0pt}{8pt}{4pt}",
         ]
+    elif cfg.section_style == "sc_accent_rule":
+        # Small-caps section titles in the accent color with a thin accent rule.
+        lines += [
+            r"\titleformat{\section}{\scshape\large\color{accent}}{}{0em}{}"
+            r"[\vspace{-3pt}{\color{accent}\titlerule[0.5pt]}]",
+            r"\titlespacing*{\section}{0pt}{9pt}{5pt}",
+        ]
+    elif cfg.section_style == "swiss_plain":
+        # Ruleless: small bold uppercase labels in the accent color, whitespace does the separating.
+        lines += [
+            r"\titleformat{\section}{\bfseries\small\color{accent}}{}{0em}{\MakeUppercase}",
+            r"\titlespacing*{\section}{0pt}{14pt}{5pt}",
+        ]
 
     lines.append(
         rf"\setlist[itemize]{{noitemsep,topsep=2pt,leftmargin=0.2in,label={cfg.bullet_char}}}"
     )
 
-    if cfg.section_style == "modern_green":
+    if cfg.header_style == "left_large":
         lines += [
             r"\newcommand{\nametext}[1]{{\fontsize{28}{34}\selectfont\bfseries #1}}",
+            r"\newcommand{\datetext}[1]{#1}",
+        ]
+    elif cfg.header_style == "centered_sc":
+        lines += [
+            r"\newcommand{\nametext}[1]{{\fontsize{22}{26}\selectfont\scshape\color{accent}#1}}",
             r"\newcommand{\datetext}[1]{#1}",
         ]
     elif cfg.accent_rgb:
